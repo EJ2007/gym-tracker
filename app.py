@@ -1,88 +1,63 @@
 import streamlit as st
 
+#Adds page title, icon in the browser tab at the top of the browser
+st.set_page_config(
+    page_title="Gym Tracker",
+    page_icon=":material/fitness_center:",
+    layout="centered",
+    initial_sidebar_state="expanded",
+)
 
-st.set_page_config(page_title="Gym Trackers", page_icon=":material/fitness_center:", layout="centered")
-
-st.title("Gym Tracker")
-st.write("Log your workouts and build this app one feature at a time.")
-
-if "workout_plan" not in st.session_state:
-    st.session_state.workout_plan = []
-
-if "saved_workout_plans" not in st.session_state:
-    st.session_state.saved_workout_plans = []
-
-if "show_plan_name_input" not in st.session_state:
-    st.session_state.show_plan_name_input = False
-
-st.header("Build a workout plan")
-
-with st.form("exercise_form", clear_on_submit=True):
-    exercise = st.text_input("Exercise", placeholder="Bench press")
-    sets = st.number_input("Sets", min_value=1, max_value=20, value=3)
-    reps = st.number_input("Reps", min_value=1, max_value=100, value=10)
-    weight = st.number_input("Weight", min_value=0.0, value=0.0, step=2.5)
-
-    add_exercise = st.form_submit_button("Add exercise")
-
-if add_exercise:
-    if exercise:
-        st.session_state.workout_plan.append(
-            {
-                "Exercise": exercise,
-                "Sets": sets,
-                "Reps": reps,
-                "Weight": weight,
-            }
-        )
-        st.success(f"Added: {sets} x {reps} {exercise} at {weight:g} lb")
-    else:
-        st.warning("Please enter an exercise name.")
-
-st.subheader("Current workout plan")
-
-if st.session_state.workout_plan:
-    st.dataframe(st.session_state.workout_plan, use_container_width=True)
-
-    save_column, clear_column = st.columns(2)
-
-    with save_column:
-        if st.button("Save workout plan"):
-            st.session_state.show_plan_name_input = True
-
-    with clear_column:
-        if st.button("Clear workout plan"):
-            st.success("Workout plan cleared.")
-            st.session_state.workout_plan = []
-            st.session_state.show_plan_name_input = False
-
-    if st.session_state.show_plan_name_input:
-        with st.form("plan_name_form"):
-            plan_name = st.text_input("Workout plan name", placeholder="Push day")
-            save_named_plan = st.form_submit_button("Save named plan")
-
-        if save_named_plan:
-            if plan_name:
-                st.session_state.saved_workout_plans.append(
-                    {
-                        "Plan Name": plan_name,
-                        "Exercises": st.session_state.workout_plan.copy(),
-                    }
-                )
-                st.session_state.workout_plan = []
-                st.session_state.show_plan_name_input = False
-                st.success(f"Saved workout plan: {plan_name}")
-                st.rerun()
-            else:
-                st.warning("Please enter a workout plan name.")
-else:
-    st.info("Add your first exercise to start building a plan.")
-
-st.subheader("My plans")
-
-if st.session_state.saved_workout_plans:
-    for plan in st.session_state.saved_workout_plans:
-        with st.expander(plan["Plan Name"]):
-            st.dataframe(plan["Exercises"], use_container_width=True)
-else:
-    st.info("Saved workout plans will appear here.")
+# Navigate through different sections and call the file for each section
+page = st.navigation(
+    [
+        st.Page("home.py", title="Home", icon=":material/home:", default=True),
+        st.Page(
+            "workout_library.py",
+            title="Workout Library",
+            icon=":material/fitness_center:",
+        ),
+        st.Page("mypage.py", title="My Page", icon=":material/person:"),
+    ],
+    position="top",
+)
+# Keep the app name in the upper-left corner on every page.
+st.html("""
+    <style>
+        /* Reserve the first 64px for the app title, including on small screens. */
+        [data-testid="stHeader"] {
+            top: 64px;
+        }
+        /* Extend the opaque header background across the entire title row. */
+        [data-testid="stHeader"]::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: inherit;
+        }
+        [data-testid="stSidebar"] {
+            top: 64px;
+            height: calc(100% - 64px);
+        }
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 10rem;
+        }
+        #gym-tracker-title {
+            position: fixed;
+            top: 14px;
+            left: 20px;
+            margin: 0;
+            padding: 0;
+            font-size: 24px;
+            line-height: 32px;
+            letter-spacing: 0;
+            z-index: 999999;
+            pointer-events: none;
+        }
+    </style>
+    <h1 id="gym-tracker-title">Gym Tracker</h1>
+""")
+page.run()
