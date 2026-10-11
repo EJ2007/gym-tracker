@@ -17,6 +17,11 @@ page = st.navigation(
             title="Workout Library",
             icon=":material/fitness_center:",
         ),
+        st.Page(
+            "start_new_workout.py",
+            title="Start New Workout",
+            icon=":material/add:"
+        ),
         st.Page("mypage.py", title="My Page", icon=":material/person:"),
     ],
     position="top",

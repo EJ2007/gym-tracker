@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 .env
 .streamlit/secrets.toml
+workouts.db
+workouts.db-*
