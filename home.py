@@ -2,14 +2,24 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from database import (
+    initialize_database,
+    load_preferred_weight_unit,
+)
+
+
+initialize_database()
+
 st.title("Home")
+
+preferred_weight_unit = load_preferred_weight_unit()
 
 st.header("Your weekly progress")
 
 # These totals will be connected to completed workout logs later.
 workouts, volume, duration = st.columns(3)
 workouts.metric("Workouts", 0, border=True)
-volume.metric("Volume (kg)", 0, border=True)
+volume.metric(f"Volume ({preferred_weight_unit})", 0, border=True)
 duration.metric("Duration (h)", 0, border=True)
 
 today = date.today()

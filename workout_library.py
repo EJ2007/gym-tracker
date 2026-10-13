@@ -2,9 +2,16 @@ import streamlit as st
 # List of exercises for exercise name autosuggest feature
 from exercises import EXERCISES
 # Save ans store workouts in sqlite3 database
-from database import initialize_database, load_workout_plans, save_workout_plan
+from database import (
+    initialize_database,
+    load_preferred_weight_unit,
+    load_workout_plans,
+    save_workout_plan,
+)
+from units import from_kg, to_kg, weight_label, weight_step
 
 initialize_database()
+preferred_weight_unit = load_preferred_weight_unit()
 
 # Open session states when the page is loaded
 if "workout_plan" not in st.session_state:
@@ -18,6 +25,16 @@ if "show_workout_builder" not in st.session_state:
 
 
 # Function definitions
+
+
+def exercises_for_display(exercises, unit):
+    return [
+        {
+            **exercise,
+            "Weight": round(from_kg(exercise["Weight"], unit), 2),
+        }
+        for exercise in exercises
+    ]
 
 # When 'Create new workout' button is clicked, name and build the program.
 @st.dialog("Name your workout plan")
@@ -90,21 +107,34 @@ if st.session_state.active_plan_name is not None and st.session_state.show_worko
         )
         sets = st.number_input("Sets", min_value=1, max_value=20, value=3)
         reps = st.number_input("Reps", min_value=1, max_value=100, value=10)
-        weight = st.number_input("Weight", min_value=0.0, value=0.0, step=2.5)
+        weight_unit = st.segmented_control(
+            "Weight unit",
+            ["kg", "lb"],
+            default=preferred_weight_unit,
+        )
+        weight = st.number_input(
+            weight_label(weight_unit),
+            min_value=0.0,
+            value=0.0,
+            step=weight_step(weight_unit),
+        )
 
         add_exercise = st.form_submit_button("Add exercise")
 
     if add_exercise:
         if exercise and exercise.strip():
+            weight_kg = to_kg(weight, weight_unit)
             st.session_state.workout_plan.append(
                 {
                     "Exercise": exercise.strip(),
                     "Sets": sets,
                     "Reps": reps,
-                    "Weight": weight,
+                    "Weight": weight_kg,
                 }
             )
-            st.success(f"Added: {sets} x {reps} {exercise.strip()} at {weight:g} lb")
+            st.success(
+                f"Added: {sets} x {reps} {exercise.strip()} at {weight:g} {weight_unit}"
+            )
         else:
             st.warning("Please enter an exercise name.")
     
@@ -113,7 +143,19 @@ if st.session_state.active_plan_name is not None and st.session_state.show_worko
     
     
     if st.session_state.workout_plan:
-        st.dataframe(st.session_state.workout_plan, width="stretch")
+        plan_display_unit = st.segmented_control(
+            "Show plan weights in",
+            ["kg", "lb"],
+            default=preferred_weight_unit,
+            key="workout_builder_display_unit",
+        )
+        st.dataframe(
+            exercises_for_display(st.session_state.workout_plan, plan_display_unit),
+            column_config={
+                "Weight": st.column_config.NumberColumn(weight_label(plan_display_unit))
+            },
+            width="stretch",
+        )
 
         save_column, delete_column, clear_column = st.columns(3)
         # Option to save, delete or clear the plan built.
@@ -145,8 +187,22 @@ st.subheader("My plans")
 # Read saved plans from SQLite on each page run.
 saved_plans = load_workout_plans()
 if saved_plans:
+    saved_plan_display_unit = st.segmented_control(
+        "Show saved plan weights in",
+        ["kg", "lb"],
+        default=preferred_weight_unit,
+        key="saved_plan_display_unit",
+    )
     for plan in saved_plans:
         with st.expander(plan["Plan Name"]):
-            st.dataframe(plan["Exercises"], width="stretch")
+            st.dataframe(
+                exercises_for_display(plan["Exercises"], saved_plan_display_unit),
+                column_config={
+                    "Weight": st.column_config.NumberColumn(
+                        weight_label(saved_plan_display_unit)
+                    )
+                },
+                width="stretch",
+            )
 else:
     st.info("Saved workout plans will appear here.")

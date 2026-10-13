@@ -5,16 +5,53 @@ from uuid import uuid4
 
 import streamlit as st
 
-from database import initialize_database, load_workout_plans, save_completed_workout
+from database import (
+    initialize_database,
+    load_preferred_weight_unit,
+    load_workout_plans,
+    save_completed_workout,
+)
 from exercises import EXERCISES
+from units import from_kg, to_kg, weight_label, weight_step
 
 
 initialize_database()
+preferred_weight_unit = load_preferred_weight_unit()
 
 if "active_workout" not in st.session_state:
     st.session_state.active_workout = None
 
 st.title("Start new workout")
+
+
+def exercises_for_display(exercises, unit):
+    return [
+        {
+            **exercise,
+            "Weight": round(from_kg(exercise["Weight"], unit), 2),
+        }
+        for exercise in exercises
+    ]
+
+
+def sets_for_display(sets, unit):
+    return [
+        {
+            **row,
+            "Weight": round(from_kg(row["Weight"], unit), 2),
+        }
+        for row in sets
+    ]
+
+
+def sets_for_storage(sets, unit):
+    return [
+        {
+            **row,
+            "Weight": to_kg(row["Weight"], unit),
+        }
+        for row in sets
+    ]
 
 if "finished_workout_summary" in st.session_state:
     summary = st.session_state.finished_workout_summary
@@ -43,7 +80,22 @@ if st.session_state.active_workout is None:
 
         if selected_id is not None:
             selected_plan = plans_by_id[selected_id]
-            st.dataframe(selected_plan["Exercises"], hide_index=True, width="stretch")
+            plan_display_unit = st.segmented_control(
+                "Show plan weights in",
+                ["kg", "lb"],
+                default=preferred_weight_unit,
+                key=f"start_plan_display_unit_{selected_id}",
+            )
+            st.dataframe(
+                exercises_for_display(selected_plan["Exercises"], plan_display_unit),
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Weight": st.column_config.NumberColumn(
+                        weight_label(plan_display_unit)
+                    )
+                },
+            )
 
             if st.button(
                 "Start workout",
@@ -67,6 +119,12 @@ else:
         workout["session_key"] = str(uuid4())
     st.subheader(workout["Plan Name"])
     st.caption("*Click Apply changes before switching pages to save your workout edits.")
+    workout_display_unit = st.segmented_control(
+        "Show workout weights in",
+        ["kg", "lb"],
+        default=preferred_weight_unit,
+        key=f"active_workout_display_unit_{workout['session_key']}",
+    )
 
     # Expand each planned exercise into separate sets once per workout.
     if "Sets" not in workout:
@@ -95,9 +153,9 @@ else:
         exercise_to_delete = None
         for index, (exercise_name, sets) in enumerate(exercise_groups.items()):
             st.subheader(exercise_name)
-            editor_key = f"workout_sets_{workout['started_at'].isoformat()}_{workout['editor_version']}_{index}"
+            editor_key = f"workout_sets_{workout['started_at'].isoformat()}_{workout['editor_version']}_{workout_display_unit}_{index}"
             edited_rows = st.data_editor(
-                sets,
+                sets_for_display(sets, workout_display_unit),
                 key=editor_key,
                 hide_index=True,
                 width="stretch",
@@ -110,13 +168,18 @@ else:
                         "Reps", min_value=0, step=1, default=10, required=True
                     ),
                     "Weight": st.column_config.NumberColumn(
-                        "Weight (lb)", min_value=0.0, step=2.5, default=0.0, required=True
+                        weight_label(workout_display_unit),
+                        min_value=0.0,
+                        step=weight_step(workout_display_unit),
+                        default=0.0,
+                        required=True,
                     ),
                     "Completed": st.column_config.CheckboxColumn("Completed", default=False),
                 },
             )
             edited_sets.extend(
-                {"Exercise": exercise_name, **row} for row in edited_rows
+                {"Exercise": exercise_name, **row}
+                for row in sets_for_storage(edited_rows, workout_display_unit)
             )
             if st.form_submit_button(
                 "Delete exercise", icon=":material/delete:", key=f"{editor_key}_delete"

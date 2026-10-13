@@ -4,6 +4,8 @@ from pathlib import Path
 
 
 DB_PATH = Path(__file__).with_name("workouts.db")
+WEIGHT_UNIT_PREFERENCE_KEY = "preferred_weight_unit"
+VALID_WEIGHT_UNITS = {"kg", "lb"}
 
 
 def initialize_database():
@@ -42,7 +44,7 @@ def initialize_database():
                     started_at TEXT NOT NULL,
                     finished_at TEXT NOT NULL,
                     duration_seconds REAL NOT NULL CHECK (duration_seconds >= 0),
-                    weight_unit TEXT NOT NULL DEFAULT 'lb'
+                    weight_unit TEXT NOT NULL DEFAULT 'kg'
                 )
             """)
             connection.execute("""
@@ -58,6 +60,34 @@ def initialize_database():
                         REFERENCES completed_workouts(id) ON DELETE CASCADE
                 )
             """)
+
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS app_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+
+            migrated = connection.execute(
+                "SELECT value FROM app_metadata WHERE key = 'weights_migrated_to_kg'"
+            ).fetchone()
+
+            if migrated is None:
+                connection.execute(
+                    "UPDATE plan_exercises SET weight = weight / 2.20462"
+                )
+                connection.execute(
+                    "UPDATE completed_sets SET weight = weight / 2.20462"
+                )
+                connection.execute(
+                    "UPDATE completed_workouts SET weight_unit = 'kg'"
+                )
+                connection.execute(
+                    """
+                    INSERT INTO app_metadata (key, value)
+                    VALUES ('weights_migrated_to_kg', 'true')
+                    """
+                )
     finally:
         connection.close()
 
@@ -96,6 +126,41 @@ def save_workout_plan(plan_name, exercises):
         return plan_id
     finally:
         connection.close()
+
+
+def load_preferred_weight_unit():
+    connection = sqlite3.connect(DB_PATH)
+
+    try:
+        row = connection.execute(
+            "SELECT value FROM app_metadata WHERE key = ?",
+            (WEIGHT_UNIT_PREFERENCE_KEY,),
+        ).fetchone()
+        if row is None or row[0] not in VALID_WEIGHT_UNITS:
+            return "kg"
+        return row[0]
+    finally:
+        connection.close()
+
+
+def save_preferred_weight_unit(unit):
+    if unit not in VALID_WEIGHT_UNITS:
+        raise ValueError("Weight unit must be kg or lb.")
+
+    connection = sqlite3.connect(DB_PATH)
+
+    try:
+        with connection:
+            connection.execute(
+                """
+                INSERT INTO app_metadata (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (WEIGHT_UNIT_PREFERENCE_KEY, unit),
+            )
+    finally:
+        connection.close()
         
 
 def save_completed_workout(workout, sets, finished_at):
@@ -125,12 +190,12 @@ def save_completed_workout(workout, sets, finished_at):
             cursor = connection.execute(
                 """
                 INSERT INTO completed_workouts
-                    (session_key, plan_name, started_at, finished_at, duration_seconds)
-                VALUES (?, ?, ?, ?, ?)
+                    (session_key, plan_name, started_at, finished_at, duration_seconds, weight_unit)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_key) DO NOTHING
                 """,
                 (workout["session_key"], workout["Plan Name"],
-                 workout["started_at"].isoformat(), finished_at.isoformat(), duration),
+                 workout["started_at"].isoformat(), finished_at.isoformat(), duration, "kg"),
             )
             if cursor.rowcount == 0:
                 return connection.execute(
