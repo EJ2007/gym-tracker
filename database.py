@@ -1,6 +1,7 @@
 import sqlite3
 import math
 from pathlib import Path
+from datetime import timezone
 
 
 DB_PATH = Path(__file__).with_name("workouts.db")
@@ -215,6 +216,62 @@ def save_completed_workout(workout, sets, finished_at):
                      row["Set"], row["Reps"], row["Weight"]),
                 )
         return workout_id
+    finally:
+        connection.close()
+
+
+def load_weekly_progress(week_start, week_end):
+    """Return totals for workouts finished in [week_start, week_end).
+
+    Pass timezone-aware datetimes. The database must already be initialized.
+    Volume is returned in kg and duration in seconds, ready for UI conversion.
+    """
+    # A timezone is required so midnight refers to an unambiguous instant.
+    if week_start.utcoffset() is None or week_end.utcoffset() is None:
+        raise ValueError("Week boundaries must include a timezone.")
+    if week_end <= week_start:
+        raise ValueError("Week end must be after week start.")
+
+    # Normalize inputs to UTC, the timezone used by the workout logger.
+    boundaries = (
+        week_start.astimezone(timezone.utc).isoformat(),
+        week_end.astimezone(timezone.utc).isoformat(),
+    )
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
+
+    try:
+        # WITH defines a temporary query result, not a new database table.
+        # julianday compares timestamps as instants, including their UTC offsets.
+        # >= includes this Monday; < excludes the next Monday.
+        row = connection.execute(
+            """
+            WITH weekly_workouts AS (
+                SELECT id, duration_seconds
+                FROM completed_workouts
+                WHERE julianday(finished_at) >= julianday(?)
+                  AND julianday(finished_at) < julianday(?)
+            )
+            SELECT
+                COUNT(*) AS workouts,
+                COALESCE(SUM(duration_seconds), 0) AS duration_seconds,
+                (
+                    SELECT COALESCE(SUM(s.reps * s.weight), 0)
+                    FROM completed_sets AS s
+                    JOIN weekly_workouts AS w ON s.workout_id = w.id
+                ) AS volume_kg
+            FROM weekly_workouts
+            """,
+            boundaries,
+        ).fetchone()
+
+        # Duration is summed separately from sets to count each workout once.
+        # COALESCE above replaces empty SUM results with zero.
+        return {
+            "workouts": row["workouts"],
+            "volume_kg": float(row["volume_kg"]),
+            "duration_seconds": float(row["duration_seconds"]),
+        }
     finally:
         connection.close()
 
